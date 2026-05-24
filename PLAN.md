@@ -119,6 +119,7 @@ If the goal is a single free-ish host that can run both the frontend and Codex w
 
 - Real hosted app.
 - Real ChatGPT managed auth through Codex app-server.
+- Anonymous browser session ownership for V1 boards instead of full app auth.
 - Create a new tier-list board from a user prompt.
 - Classic tier rows: `S`, `A`, `B`, `C`, `D`, `F`.
 - Bottom tray for unranked generated items.
@@ -384,7 +385,13 @@ Fields:
 
 ## App Architecture
 
-### Recommended Prototype Architecture
+### Selected Prototype Architecture
+
+The current V1 target is Hugging Face Spaces with Docker. This keeps the frontend, lightweight app API, filesystem-backed state, and Codex app-server worker path in one container while the prototype proves the hosted ChatGPT/Codex auth and imagegen flow.
+
+The first runnable scaffold uses mock generation by default and gates real app-server usage behind `CODEX_ENABLE_APP_SERVER=true`.
+
+### Longer-Term Architecture
 
 ```text
 Browser
@@ -472,16 +479,30 @@ There are two kinds of auth:
 
 ### App Auth
 
-The app needs to know which board belongs to which user.
+For V1, full app auth is not required. A random anonymous session cookie owns boards on that browser. ChatGPT/Codex device-code auth is the meaningful auth gate for image generation.
 
-Options:
+This is acceptable for the first hosted proof because:
+
+- Boards are not shared.
+- Cross-device account recovery is out of scope.
+- The app is proving the structured imagegen workflow, not account management.
+
+Full app auth becomes necessary when adding:
+
+- Cross-device board access.
+- Public or private sharing.
+- Billing or quotas.
+- User-managed board history.
+- Durable multi-user token storage.
+
+Future app auth options:
 
 - Clerk.
 - Auth.js.
 - Supabase Auth.
 - Minimal magic-link auth.
 
-For fastest V1 on Vercel, use one of:
+For a future account-backed version, use one of:
 
 - Clerk if convenience matters.
 - Auth.js if avoiding another hosted dependency matters.
@@ -493,7 +514,7 @@ Use Codex app-server managed ChatGPT device-code login.
 
 Expected flow:
 
-1. User signs into the app.
+1. User opens the app and receives an anonymous session cookie.
 2. App asks worker to start Codex login.
 3. Worker calls app-server login with `chatgptDeviceCode`.
 4. App shows the user the device code and verification URL.
