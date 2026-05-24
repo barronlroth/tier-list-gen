@@ -1,4 +1,4 @@
-# Tier List Scenarios Plan
+# Tier List Gen Plan
 
 ## One-Line Concept
 
@@ -1056,4 +1056,3 @@ The prototype is good enough when:
 - No duplicate prevention.
 - Removed items disappear immediately.
 - Cache generated images.
-
