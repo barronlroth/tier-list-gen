@@ -9,6 +9,8 @@ type Params = {
 export async function GET(_request: Request, { params }: Params) {
   const ownerId = await getSessionId();
   const { boardId } = await params;
-  return NextResponse.json({ board: await getBoard(ownerId, boardId) });
+  return NextResponse.json(
+    { board: await getBoard(ownerId, boardId) },
+    { headers: { "cache-control": "no-store" } },
+  );
 }
-

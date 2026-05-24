@@ -4,5 +4,8 @@ import { getCodexAuthStatus } from "@/lib/codex-app-server";
 
 export async function GET() {
   const ownerId = await getSessionId();
-  return NextResponse.json(await getCodexAuthStatus(ownerId));
+  return NextResponse.json(
+    await getCodexAuthStatus(ownerId),
+    { headers: { "cache-control": "no-store" } },
+  );
 }

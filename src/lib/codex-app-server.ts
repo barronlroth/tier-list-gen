@@ -65,6 +65,8 @@ export type CodexMutationResult = {
   boardTitle: string | null;
 };
 
+export type CodexProgress = (phase: string, detail: string) => void | Promise<void>;
+
 type NotificationHandler = (message: JsonRpcResponse) => void;
 
 class CodexRpcClient {
@@ -267,12 +269,14 @@ export async function startDeviceLogin(ownerId: string): Promise<DeviceLoginStar
 export async function createBoardWithCodex(
   ownerId: string,
   input: string,
+  onProgress?: CodexProgress,
 ): Promise<CodexCreateResult | null> {
-  const ready = await getReadyCodexClient(ownerId);
+  const ready = await getReadyCodexClient(ownerId, onProgress);
   if (!ready) {
     return null;
   }
 
+  await onProgress?.("starting-thread", "Starting a Codex thread for this board.");
   const thread = (await ready.client.request("thread/start", {
     approvalPolicy: "never",
     sandbox: "read-only",
@@ -292,11 +296,13 @@ export async function createBoardWithCodex(
     throw new Error("Codex did not return a thread id");
   }
 
+  await onProgress?.("running-codex", `Thread ${threadId} started. Asking Codex to create the item set and images.`);
   const result = await runStructuredCodexTurn(ready.client, {
     threadId,
     input: initialBoardPrompt(input),
     schema: createBoardSchema(),
     timeoutMs: 8 * 60_000,
+    onProgress,
   });
   const parsed = parseJsonObject(result.text) as {
     title?: unknown;
@@ -320,17 +326,23 @@ export async function mutateBoardWithCodex(
   ownerId: string,
   board: BoardState,
   input: string,
+  onProgress?: CodexProgress,
 ): Promise<CodexMutationResult | null> {
-  const ready = await getReadyCodexClient(ownerId);
+  const ready = await getReadyCodexClient(ownerId, onProgress);
   if (!ready || !board.codex.threadId) {
+    if (ready && !board.codex.threadId) {
+      await onProgress?.("fallback", "This board was created without a Codex thread, so the local patcher is being used.");
+    }
     return null;
   }
 
+  await onProgress?.("running-codex", `Sending the mutation to Codex thread ${board.codex.threadId}.`);
   const result = await runStructuredCodexTurn(ready.client, {
     threadId: board.codex.threadId,
     input: mutationPrompt(board, input),
     schema: mutationSchema(),
     timeoutMs: 8 * 60_000,
+    onProgress,
   });
   const parsed = parseJsonObject(result.text) as {
     addItems?: Array<{ title?: unknown; imagePrompt?: unknown }>;
@@ -361,28 +373,33 @@ export async function retryImageWithCodex(
   ownerId: string,
   board: BoardState,
   itemId: string,
+  onProgress?: CodexProgress,
 ): Promise<CodexGeneratedImage | null> {
-  const ready = await getReadyCodexClient(ownerId);
+  const ready = await getReadyCodexClient(ownerId, onProgress);
   const item = board.items[itemId];
   if (!ready || !item || !board.codex.threadId) {
     return null;
   }
 
+  await onProgress?.("running-codex", `Retrying image generation for ${item.title}.`);
   const result = await runStructuredCodexTurn(ready.client, {
     threadId: board.codex.threadId,
     input: retryPrompt(item.title, item.prompt),
     schema: retrySchema(),
     timeoutMs: 5 * 60_000,
+    onProgress,
   });
 
   return result.images[0] ?? null;
 }
 
-async function getReadyCodexClient(ownerId: string) {
+async function getReadyCodexClient(ownerId: string, onProgress?: CodexProgress) {
   if (process.env.CODEX_ENABLE_APP_SERVER !== "true") {
+    await onProgress?.("fallback", "Codex app-server is disabled in this environment.");
     return null;
   }
 
+  await onProgress?.("checking-auth", "Checking ChatGPT auth and image-generation capability.");
   const client = getClient(ownerId);
   const [accountResult, capabilities] = await Promise.all([
     client.request("account/read", { refreshToken: true }),
@@ -394,9 +411,16 @@ async function getReadyCodexClient(ownerId: string) {
   );
 
   if (!account || !imageGeneration) {
+    await onProgress?.(
+      "fallback",
+      !account
+        ? "No ChatGPT account is connected for this browser session."
+        : "The active Codex provider did not report image-generation capability.",
+    );
     return null;
   }
 
+  await onProgress?.("checking-auth", "ChatGPT auth is connected and image-generation capability is available.");
   return {
     client,
     accountId: account.email ?? account.type ?? null,
@@ -410,6 +434,7 @@ async function runStructuredCodexTurn(
     input: string;
     schema: JsonValue;
     timeoutMs: number;
+    onProgress?: CodexProgress;
   },
 ) {
   const images: CodexGeneratedImage[] = [];
@@ -420,6 +445,7 @@ async function runStructuredCodexTurn(
   });
 
   try {
+    await options.onProgress?.("running-codex", "Starting a Codex turn.");
     const started = (await client.request("turn/start", {
       threadId: options.threadId,
       input: [{ type: "text", text: options.input, text_elements: [] }],
@@ -428,37 +454,26 @@ async function runStructuredCodexTurn(
       summary: "none",
       personality: "none",
       outputSchema: options.schema,
-    }, options.timeoutMs)) as { turn?: { id?: string } };
+    }, options.timeoutMs)) as { turn?: { id?: string; items?: unknown[] } };
 
     const turnId = started.turn?.id;
     if (!turnId) {
       throw new Error("Codex did not return a turn id");
     }
+    collectTurnItems(started.turn?.items, images, texts);
+    await options.onProgress?.("running-codex", `Codex turn ${turnId} started.`);
 
-    const completed = await client.waitForNotification(
-      (message) => {
-        const params = message.params as { threadId?: string; turn?: { id?: string } } | undefined;
-        return (
-          message.method === "turn/completed" &&
-          params?.threadId === options.threadId &&
-          params.turn?.id === turnId
-        );
-      },
-      options.timeoutMs,
+    const finishedTurn = await waitForTurnCompletion(client, {
+      threadId: options.threadId,
+      turnId,
+      timeoutMs: options.timeoutMs,
+      onProgress: options.onProgress,
+    });
+    collectTurnItems(
+      Array.isArray(finishedTurn?.items) ? finishedTurn.items : undefined,
+      images,
+      texts,
     );
-
-    collectTurnItems((completed.params as { turn?: { items?: unknown[] } }).turn?.items, images, texts);
-
-    try {
-      const thread = (await client.request("thread/read", {
-        threadId: options.threadId,
-        includeTurns: true,
-      })) as { thread?: { turns?: Array<{ id?: string; items?: unknown[] }> } };
-      const finishedTurn = thread.thread?.turns?.find((turn) => turn.id === turnId);
-      collectTurnItems(finishedTurn?.items, images, texts);
-    } catch (error) {
-      console.error("[codex app-server] failed to read completed turn", error);
-    }
 
     const text = texts.find((candidate) => candidate.trim().startsWith("{")) ?? texts.at(-1);
     if (!text) {
@@ -517,6 +532,74 @@ function collectThreadItem(item: unknown, images: CodexGeneratedImage[], texts: 
       revisedPrompt: typeof record.revisedPrompt === "string" ? record.revisedPrompt : null,
       savedPath: typeof record.savedPath === "string" ? record.savedPath : undefined,
     });
+  }
+}
+
+async function waitForTurnCompletion(
+  client: CodexRpcClient,
+  options: {
+    threadId: string;
+    turnId: string;
+    timeoutMs: number;
+    onProgress?: CodexProgress;
+  },
+) {
+  const deadline = Date.now() + options.timeoutMs;
+  let pollCount = 0;
+
+  while (Date.now() < deadline) {
+    const turn = await readTurn(client, options.threadId, options.turnId);
+    if (turn) {
+      collectProgressFromTurn(turn, options.onProgress);
+      const status = typeof turn.status === "string" ? turn.status : "";
+      if (status === "completed") {
+        await options.onProgress?.("saving-assets", "Codex turn completed. Reading generated text and images.");
+        return turn;
+      }
+      if (status === "failed") {
+        const error = turn.error && typeof turn.error === "object"
+          ? JSON.stringify(turn.error)
+          : "Codex turn failed.";
+        throw new Error(error);
+      }
+    }
+
+    pollCount += 1;
+    if (pollCount === 1 || pollCount % 5 === 0) {
+      await options.onProgress?.("running-codex", `Waiting for Codex turn output (${pollCount} checks).`);
+    }
+    await sleep(2000);
+  }
+
+  throw new Error("Timed out waiting for Codex turn completion");
+}
+
+async function readTurn(client: CodexRpcClient, threadId: string, turnId: string) {
+  try {
+    const thread = (await client.request("thread/read", {
+      threadId,
+      includeTurns: true,
+    })) as { thread?: { turns?: Array<Record<string, unknown>> } };
+    return thread.thread?.turns?.find((turn) => turn.id === turnId) ?? null;
+  } catch (error) {
+    console.error("[codex app-server] failed to read turn", error);
+    return null;
+  }
+}
+
+function collectProgressFromTurn(turn: Record<string, unknown>, onProgress?: CodexProgress) {
+  const items = Array.isArray(turn.items) ? turn.items : [];
+  const imageCount = items.filter(
+    (item) => item && typeof item === "object" && (item as Record<string, unknown>).type === "imageGeneration",
+  ).length;
+  if (imageCount > 0) {
+    void onProgress?.("generating-images", `Codex has produced ${imageCount} image event${imageCount === 1 ? "" : "s"}.`);
+  }
+  const textCount = items.filter(
+    (item) => item && typeof item === "object" && (item as Record<string, unknown>).type === "agentMessage",
+  ).length;
+  if (textCount > 0) {
+    void onProgress?.("running-codex", "Codex has returned structured text.");
   }
 }
 
@@ -705,6 +788,10 @@ function formatError(error: unknown) {
     return error.message;
   }
   return String(error);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 const CODEX_BOARD_INSTRUCTIONS = `You are a backend worker for Tier List Gen.

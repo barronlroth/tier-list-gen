@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSessionId } from "@/lib/auth-session";
-import { createBoard } from "@/lib/generation";
+import { createPendingBoard } from "@/lib/generation";
+import { startCreateBoardJob } from "@/lib/jobs";
 import { listBoards, saveBoard } from "@/lib/store";
 
 export async function GET() {
   const ownerId = await getSessionId();
-  return NextResponse.json({ boards: await listBoards(ownerId) });
+  return NextResponse.json(
+    { boards: await listBoards(ownerId) },
+    { headers: { "cache-control": "no-store" } },
+  );
 }
 
 export async function POST(request: Request) {
@@ -17,6 +21,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
   }
 
-  const board = await saveBoard(await createBoard(prompt, ownerId));
+  const board = await saveBoard(createPendingBoard(prompt, ownerId));
+  startCreateBoardJob(ownerId, board);
   return NextResponse.json({ board });
 }

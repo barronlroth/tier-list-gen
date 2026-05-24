@@ -17,6 +17,7 @@ Hosted tier-list generator prototype using ChatGPT/Codex auth as the image-gener
 - Mutation field applies board changes.
 - Real generation uses Codex app-server thread/turn APIs and image-generation events.
 - The mock generator keeps the app usable when `CODEX_ENABLE_APP_SERVER` is off or the user has not connected ChatGPT.
+- Board generation and mutations run as background jobs with visible activity phases and error details.
 
 ## Local Development
 

@@ -24,7 +24,20 @@ export type BoardTurn = {
   kind: "create" | "mutation" | "retry";
   input: string;
   status: "pending" | "completed" | "failed";
+  phase?:
+    | "queued"
+    | "checking-auth"
+    | "starting-thread"
+    | "running-codex"
+    | "generating-images"
+    | "saving-assets"
+    | "fallback"
+    | "completed"
+    | "failed";
+  detail?: string;
+  error?: string;
   createdAt: string;
+  completedAt?: string;
 };
 
 export type BoardState = {
@@ -53,4 +66,3 @@ export type CodexAuthStatus = {
   mode: "mock" | "codex";
   detail: string;
 };
-

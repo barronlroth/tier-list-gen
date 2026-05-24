@@ -5,6 +5,7 @@ import {
   mutateBoardWithCodex,
   retryImageWithCodex,
   type CodexGeneratedImage,
+  type CodexProgress,
 } from "@/lib/codex-app-server";
 import { saveGeneratedImageAsset } from "@/lib/assets";
 
@@ -53,16 +54,56 @@ const GENERIC = [
   "Sleeper Hit",
 ];
 
-export async function createBoard(prompt: string, ownerId: string): Promise<BoardState> {
+export function createPendingBoard(prompt: string, ownerId: string): BoardState {
+  const now = new Date().toISOString();
+  return {
+    id: makeId("board"),
+    ownerId,
+    title: titleFromPrompt(prompt),
+    originalPrompt: prompt,
+    desiredImageQuality: "low",
+    visualStyle: "professional studio photography",
+    createdAt: now,
+    updatedAt: now,
+    codex: {
+      threadId: null,
+      authAccountId: null,
+      model: null,
+      reasoningEffort: "low",
+    },
+    tiers: DEFAULT_TIERS.map((tier) => ({ ...tier, itemIds: [] })),
+    trayItemIds: [],
+    items: {},
+    turns: [
+      {
+        id: makeId("turn"),
+        kind: "create",
+        input: prompt,
+        status: "pending",
+        phase: "queued",
+        detail: "Queued board generation.",
+        createdAt: now,
+      },
+    ],
+  };
+}
+
+export async function createBoard(
+  prompt: string,
+  ownerId: string,
+  onProgress?: CodexProgress,
+): Promise<BoardState> {
   try {
-    const codexResult = await createBoardWithCodex(ownerId, prompt);
+    const codexResult = await createBoardWithCodex(ownerId, prompt, onProgress);
     if (codexResult?.items.length) {
       return await boardFromCodexResult(prompt, ownerId, codexResult);
     }
   } catch (error) {
     console.error("[generation] falling back to mock board generation", error);
+    await onProgress?.("fallback", `Codex generation failed; using fallback generator. ${formatError(error)}`);
   }
 
+  await onProgress?.("fallback", "Using local fallback generator.");
   return createMockBoard(prompt, ownerId);
 }
 
@@ -110,16 +151,19 @@ export async function applyMutation(
   board: BoardState,
   input: string,
   ownerId: string,
+  onProgress?: CodexProgress,
 ): Promise<BoardState> {
   try {
-    const codexResult = await mutateBoardWithCodex(ownerId, board, input);
+    const codexResult = await mutateBoardWithCodex(ownerId, board, input, onProgress);
     if (codexResult) {
       return await applyCodexMutation(board, input, codexResult);
     }
   } catch (error) {
     console.error("[generation] falling back to mock board mutation", error);
+    await onProgress?.("fallback", `Codex mutation failed; using fallback patcher. ${formatError(error)}`);
   }
 
+  await onProgress?.("fallback", "Using local fallback patcher.");
   return applyMockMutation(board, input);
 }
 
@@ -172,6 +216,7 @@ export async function retryImage(
   board: BoardState,
   itemId: string,
   ownerId: string,
+  onProgress?: CodexProgress,
 ): Promise<BoardState> {
   const item = board.items[itemId];
   if (!item) {
@@ -179,7 +224,7 @@ export async function retryImage(
   }
 
   try {
-    const image = await retryImageWithCodex(ownerId, board, itemId);
+    const image = await retryImageWithCodex(ownerId, board, itemId, onProgress);
     if (image) {
       const asset = await saveGeneratedImageAsset(image);
       return {
@@ -209,8 +254,10 @@ export async function retryImage(
     }
   } catch (error) {
     console.error("[generation] falling back to mock image retry", error);
+    await onProgress?.("fallback", `Codex retry failed; using fallback image. ${formatError(error)}`);
   }
 
+  await onProgress?.("fallback", "Using local fallback image.");
   return {
     ...board,
     updatedAt: new Date().toISOString(),
@@ -225,6 +272,13 @@ export async function retryImage(
       },
     },
   };
+}
+
+function formatError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 async function boardFromCodexResult(

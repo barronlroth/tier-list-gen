@@ -34,6 +34,15 @@ export async function saveBoard(board: BoardState) {
   return board;
 }
 
+export async function updateBoard(
+  ownerId: string,
+  boardId: string,
+  updater: (board: BoardState) => BoardState,
+) {
+  const board = await getBoard(ownerId, boardId);
+  return await saveBoard(updater(board));
+}
+
 async function ensureStore() {
   await mkdir(BOARD_DIR, { recursive: true });
 }
@@ -45,4 +54,3 @@ async function readBoardFile(filePath: string) {
 function boardPath(boardId: string) {
   return path.join(BOARD_DIR, `${boardId}.json`);
 }
-

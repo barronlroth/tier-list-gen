@@ -126,7 +126,8 @@ button {
 }
 
 .creator button:disabled,
-.mutation-form button:disabled {
+.mutation-form button:disabled,
+.connect-button:disabled {
   cursor: wait;
   opacity: 0.56;
 }
@@ -376,6 +377,97 @@ button {
 .empty-board {
   color: var(--muted);
   padding: 24px;
+}
+
+.generation-state {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 14px;
+  padding: 18px;
+}
+
+.generation-state strong {
+  display: block;
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.generation-state p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 3px 0 0;
+}
+
+.spinner {
+  animation: spin 900ms linear infinite;
+  border: 3px solid #d8d2c8;
+  border-top-color: var(--accent);
+  border-radius: 999px;
+  flex: 0 0 auto;
+  height: 26px;
+  width: 26px;
+}
+
+.activity-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.activity-item,
+.activity-empty {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: block;
+  list-style: none;
+  padding: 9px;
+}
+
+.activity-item.pending {
+  background: #edf7f5;
+  border-color: #9fcac3;
+}
+
+.activity-item.failed {
+  background: #fff0eb;
+  border-color: #edb39f;
+}
+
+.activity-item strong {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 3px;
+  text-transform: capitalize;
+}
+
+.activity-item span,
+.activity-empty {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.activity-item code {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--accent-2);
+  display: block;
+  font-size: 11px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  padding: 6px;
+  white-space: pre-wrap;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 900px) {

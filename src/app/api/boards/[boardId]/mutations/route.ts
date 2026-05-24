@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { getSessionId } from "@/lib/auth-session";
-import { applyMutation } from "@/lib/generation";
+import { appendPendingTurn, startMutationJob } from "@/lib/jobs";
 import { getBoard, saveBoard } from "@/lib/store";
 
 type Params = {
@@ -18,6 +19,14 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const board = await getBoard(ownerId, boardId);
-  const nextBoard = await saveBoard(await applyMutation(board, input, ownerId));
+  const turnId = `turn_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const nextBoard = await saveBoard(appendPendingTurn(board, {
+    id: turnId,
+    kind: "mutation",
+    input,
+    phase: "queued",
+    detail: "Queued board mutation.",
+  }));
+  startMutationJob(ownerId, board, turnId, input);
   return NextResponse.json({ board: nextBoard });
 }
