@@ -17,7 +17,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
   }
 
-  const board = await saveBoard(createBoard(prompt, ownerId));
+  const board = await saveBoard(await createBoard(prompt, ownerId));
   return NextResponse.json({ board });
 }
-

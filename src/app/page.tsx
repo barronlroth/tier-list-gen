@@ -29,6 +29,16 @@ export default function Home() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!deviceLogin || auth?.connected) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refreshAuth();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [auth?.connected, deviceLogin]);
+
   const counts = useMemo(() => {
     if (!board) {
       return { total: 0, ready: 0, failed: 0 };
@@ -159,7 +169,7 @@ export default function Home() {
       <header className="topbar">
         <div className="brand">
           <h1>Tier List Gen</h1>
-          <p>Generate the set, rank it yourself, patch it as you go.</p>
+          <p>{busy ? "Working on the board..." : "Generate the set, rank it yourself, patch it as you go."}</p>
         </div>
         <div className="auth-pill">
           ChatGPT/Codex: <strong>{auth?.connected ? "connected" : auth?.mode ?? "mock"}</strong>
@@ -234,6 +244,7 @@ export default function Home() {
               <button className="connect-button" type="button" onClick={startDeviceLogin}>
                 Start device login
               </button>
+              <p className="auth-detail">{auth?.detail}</p>
               {deviceLogin ? (
                 <div className="device-card">
                   <span>{deviceLogin.mode === "mock" ? "Mock device flow" : "Device code"}</span>
@@ -250,4 +261,3 @@ export default function Home() {
     </main>
   );
 }
-

@@ -326,6 +326,13 @@ button {
   margin: 0;
 }
 
+.auth-detail {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin: -8px 0 0;
+}
+
 .status-list {
   display: grid;
   gap: 8px;
@@ -397,4 +404,3 @@ button {
     font-size: 22px;
   }
 }
-

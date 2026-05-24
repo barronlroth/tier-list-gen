@@ -11,7 +11,6 @@ export async function POST(_request: Request, { params }: Params) {
   const ownerId = await getSessionId();
   const { boardId, itemId } = await params;
   const board = await getBoard(ownerId, boardId);
-  const nextBoard = await saveBoard(retryImage(board, itemId));
+  const nextBoard = await saveBoard(await retryImage(board, itemId, ownerId));
   return NextResponse.json({ board: nextBoard });
 }
-

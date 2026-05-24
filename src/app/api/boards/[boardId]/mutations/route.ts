@@ -18,7 +18,6 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const board = await getBoard(ownerId, boardId);
-  const nextBoard = await saveBoard(applyMutation(board, input));
+  const nextBoard = await saveBoard(await applyMutation(board, input, ownerId));
   return NextResponse.json({ board: nextBoard });
 }
-

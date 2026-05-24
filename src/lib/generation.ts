@@ -1,5 +1,12 @@
 import type { BoardItem, BoardState, Tier } from "@/lib/types";
 import { randomUUID } from "node:crypto";
+import {
+  createBoardWithCodex,
+  mutateBoardWithCodex,
+  retryImageWithCodex,
+  type CodexGeneratedImage,
+} from "@/lib/codex-app-server";
+import { saveGeneratedImageAsset } from "@/lib/assets";
 
 const DEFAULT_TIERS: Tier[] = ["S", "A", "B", "C", "D", "F"].map((label) => ({
   id: `tier_${label.toLowerCase()}`,
@@ -46,7 +53,20 @@ const GENERIC = [
   "Sleeper Hit",
 ];
 
-export function createBoard(prompt: string, ownerId: string): BoardState {
+export async function createBoard(prompt: string, ownerId: string): Promise<BoardState> {
+  try {
+    const codexResult = await createBoardWithCodex(ownerId, prompt);
+    if (codexResult?.items.length) {
+      return await boardFromCodexResult(prompt, ownerId, codexResult);
+    }
+  } catch (error) {
+    console.error("[generation] falling back to mock board generation", error);
+  }
+
+  return createMockBoard(prompt, ownerId);
+}
+
+function createMockBoard(prompt: string, ownerId: string): BoardState {
   const titles = chooseInitialItems(prompt);
   const items = Object.fromEntries(
     titles.map((title) => {
@@ -86,7 +106,24 @@ export function createBoard(prompt: string, ownerId: string): BoardState {
   };
 }
 
-export function applyMutation(board: BoardState, input: string): BoardState {
+export async function applyMutation(
+  board: BoardState,
+  input: string,
+  ownerId: string,
+): Promise<BoardState> {
+  try {
+    const codexResult = await mutateBoardWithCodex(ownerId, board, input);
+    if (codexResult) {
+      return await applyCodexMutation(board, input, codexResult);
+    }
+  } catch (error) {
+    console.error("[generation] falling back to mock board mutation", error);
+  }
+
+  return applyMockMutation(board, input);
+}
+
+function applyMockMutation(board: BoardState, input: string): BoardState {
   const lowered = input.toLowerCase();
   const removeMatches = parseRemovalTargets(input);
   const addTitles = parseAddTargets(input);
@@ -131,10 +168,47 @@ export function applyMutation(board: BoardState, input: string): BoardState {
   };
 }
 
-export function retryImage(board: BoardState, itemId: string): BoardState {
+export async function retryImage(
+  board: BoardState,
+  itemId: string,
+  ownerId: string,
+): Promise<BoardState> {
   const item = board.items[itemId];
   if (!item) {
     return board;
+  }
+
+  try {
+    const image = await retryImageWithCodex(ownerId, board, itemId);
+    if (image) {
+      const asset = await saveGeneratedImageAsset(image);
+      return {
+        ...board,
+        updatedAt: new Date().toISOString(),
+        items: {
+          ...board.items,
+          [itemId]: {
+            ...item,
+            status: "ready",
+            imageAssetId: asset.assetId,
+            imageUrl: asset.imageUrl,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        turns: [
+          ...board.turns,
+          {
+            id: makeId("turn"),
+            kind: "retry",
+            input: item.title,
+            status: "completed",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+    }
+  } catch (error) {
+    console.error("[generation] falling back to mock image retry", error);
   }
 
   return {
@@ -151,6 +225,154 @@ export function retryImage(board: BoardState, itemId: string): BoardState {
       },
     },
   };
+}
+
+async function boardFromCodexResult(
+  prompt: string,
+  ownerId: string,
+  result: {
+    title: string;
+    threadId: string;
+    model: string | null;
+    accountId: string | null;
+    items: Array<{ title: string; imagePrompt: string; image: CodexGeneratedImage | null }>;
+  },
+): Promise<BoardState> {
+  const itemPairs = await Promise.all(
+    result.items.map(async (item) => {
+      const id = makeId("item");
+      return [id, await makeGeneratedItem(id, item.title, item.imagePrompt, item.image)] as const;
+    }),
+  );
+  const items = Object.fromEntries(itemPairs);
+
+  return {
+    id: makeId("board"),
+    ownerId,
+    title: result.title || titleFromPrompt(prompt),
+    originalPrompt: prompt,
+    desiredImageQuality: "low",
+    visualStyle: "professional studio photography",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    codex: {
+      threadId: result.threadId,
+      authAccountId: result.accountId,
+      model: result.model,
+      reasoningEffort: "low",
+    },
+    tiers: DEFAULT_TIERS.map((tier) => ({ ...tier, itemIds: [] })),
+    trayItemIds: Object.keys(items),
+    items,
+    turns: [
+      {
+        id: makeId("turn"),
+        kind: "create",
+        input: prompt,
+        status: "completed",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  };
+}
+
+async function applyCodexMutation(
+  board: BoardState,
+  input: string,
+  result: {
+    threadId: string;
+    model: string | null;
+    accountId: string | null;
+    addItems: Array<{ title: string; imagePrompt: string; image: CodexGeneratedImage | null }>;
+    removeTitles: string[];
+    boardTitle: string | null;
+  },
+): Promise<BoardState> {
+  let next = result.removeTitles.reduce(removeItem, board);
+
+  if (result.addItems.length > 0) {
+    const newItemPairs = await Promise.all(
+      result.addItems.map(async (item) => {
+        const id = makeId("item");
+        return [id, await makeGeneratedItem(id, item.title, item.imagePrompt, item.image)] as const;
+      }),
+    );
+    const newItems = Object.fromEntries(newItemPairs);
+    next = {
+      ...next,
+      items: { ...next.items, ...newItems },
+      trayItemIds: [...next.trayItemIds, ...Object.keys(newItems)],
+    };
+  }
+
+  return {
+    ...next,
+    title: result.boardTitle ?? next.title,
+    updatedAt: new Date().toISOString(),
+    codex: {
+      ...next.codex,
+      threadId: result.threadId,
+      authAccountId: result.accountId,
+      model: result.model,
+    },
+    turns: [
+      ...next.turns,
+      {
+        id: makeId("turn"),
+        kind: "mutation",
+        input,
+        status: "completed",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  };
+}
+
+async function makeGeneratedItem(
+  id: string,
+  title: string,
+  prompt: string,
+  image: CodexGeneratedImage | null,
+): Promise<BoardItem> {
+  const now = new Date().toISOString();
+  if (!image) {
+    return {
+      id,
+      title,
+      prompt,
+      status: "failed",
+      imageAssetId: null,
+      imageUrl: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  try {
+    const asset = await saveGeneratedImageAsset(image);
+    return {
+      id,
+      title,
+      prompt,
+      status: "ready",
+      imageAssetId: asset.assetId,
+      imageUrl: asset.imageUrl,
+      createdAt: now,
+      updatedAt: now,
+    };
+  } catch (error) {
+    console.error("[generation] failed to save generated image asset", error);
+    return {
+      id,
+      title,
+      prompt,
+      status: "failed",
+      imageAssetId: null,
+      imageUrl: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
 }
 
 function chooseInitialItems(prompt: string) {

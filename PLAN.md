@@ -8,6 +8,8 @@ A hosted tier-list app where users log in with their ChatGPT account, describe t
 
 The first version is not a general chat app. It is a board-first editor with one mutation input.
 
+Implementation status: the repo now includes the board-first UI, anonymous session boards, per-session Codex app-server auth homes, app-server device-code login, app-server thread/turn calls, image-generation event capture, generated asset caching, and a mock fallback for environments where app-server auth is unavailable.
+
 The user experience should feel like:
 
 1. User opens the app.

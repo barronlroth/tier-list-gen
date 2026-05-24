@@ -6,16 +6,17 @@ pinned: false
 
 # Tier List Gen
 
-Hosted tier-list generator prototype using ChatGPT/Codex auth as the planned image-generation path.
+Hosted tier-list generator prototype using ChatGPT/Codex auth as the image-generation path, with a mock fallback when app-server auth is unavailable.
 
 ## V1 Shape
 
 - Anonymous browser session owns local boards.
-- ChatGPT/Codex device-code auth is the meaningful imagegen auth.
+- ChatGPT/Codex device-code auth is scoped to the anonymous browser session.
 - Classic `S A B C D F` tier board.
 - Bottom tray for unranked tiles.
 - Mutation field applies board changes.
-- Imagegen integration is isolated behind a Codex adapter; the app runs with a mock generator until the hosted app-server flow is proven.
+- Real generation uses Codex app-server thread/turn APIs and image-generation events.
+- The mock generator keeps the app usable when `CODEX_ENABLE_APP_SERVER` is off or the user has not connected ChatGPT.
 
 ## Local Development
 
@@ -40,8 +41,8 @@ Environment variables:
 
 ```bash
 APP_DATA_DIR=/data/tier-list-gen
-CODEX_ENABLE_APP_SERVER=false
+CODEX_ENABLE_APP_SERVER=true
 CODEX_HOME=/data/codex-home
 ```
 
-Set `CODEX_ENABLE_APP_SERVER=true` after the app-server device-code harness is validated in the hosted container.
+When app-server is enabled, each browser session gets its own Codex home under `CODEX_HOME/sessions`.
