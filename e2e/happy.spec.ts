@@ -2,8 +2,6 @@ import { expect, test } from "@playwright/test";
 
 test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", async ({ page, browser }) => {
   await page.goto("/");
-  await page.getByLabel("Access code").fill("demo");
-  await page.getByRole("button", { name: /enter/i }).click();
   await page.getByLabel("List topic").fill("potato dishes");
   await page.getByRole("button", { name: /build my list/i }).click();
   await expect(page.getByText("WHO MAKES", { exact: false })).toBeVisible();
@@ -60,8 +58,6 @@ test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", asyn
   const phone = await browser.newContext({ baseURL: new URL(page.url()).origin, viewport: { width: 390, height: 844 }, hasTouch: true });
   const phonePage = await phone.newPage();
   await phonePage.goto("/");
-  await phonePage.getByLabel("Access code").fill("demo");
-  await phonePage.getByRole("button", { name: /enter/i }).click();
   await expect(phonePage.locator(".recent article b")).toHaveText("potato dishes");
   await phone.close();
 });
@@ -77,8 +73,6 @@ test("cancels image generation and keeps the mobile ranking board usable", async
     });
   });
   await page.goto("/");
-  await page.getByLabel("Access code").fill("demo");
-  await page.getByRole("button", { name: /enter/i }).click();
   await page.getByLabel("List topic").fill("potato dishes");
   await page.getByRole("button", { name: /build my list/i }).click();
   await page.getByRole("button", { name: /confirm/i }).click();

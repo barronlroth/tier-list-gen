@@ -10,7 +10,7 @@ npm install
 npm run dev -- --hostname 0.0.0.0
 ```
 
-Open `http://localhost:3000` (demo access code: `demo`). Without `GEMINI_API_KEY`, the app uses deterministic mock items and placeholder images. Add a Gemini API key to enable `gemini-3.1-flash-lite` item generation and `gemini-3.1-flash-lite-image` images using minimal thinking and square 1K output. Secrets are only read by route handlers.
+Open `http://localhost:3000`. Without `GEMINI_API_KEY`, the app uses deterministic mock items and placeholder images. Add a Gemini API key to enable `gemini-3.1-flash-lite` item generation and `gemini-3.1-flash-lite-image` images using minimal thinking and square 1K output. Secrets are only read by route handlers.
 
 For phone access, connect the phone to the same Wi-Fi and open `http://MAC_IP:3000`; find the address with `ipconfig getifaddr en0`. macOS may ask you to allow incoming Node connections.
 
