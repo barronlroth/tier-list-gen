@@ -1,0 +1,1 @@
+import {describe,expect,it} from "vitest";import {emptyRanking,TIERS} from "./types";describe("ranking",()=>{it("creates every fixed tier",()=>expect(Object.keys(emptyRanking())).toEqual([...TIERS]));it("does not share arrays",()=>{const a=emptyRanking();a.S.push("x");expect(a.A).toEqual([])})});
