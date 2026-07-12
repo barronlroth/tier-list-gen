@@ -21,6 +21,7 @@
 
 # production
 /build
+/.tierlistgen-data/
 
 # misc
 .DS_Store

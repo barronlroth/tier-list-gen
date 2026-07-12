@@ -1,6 +1,6 @@
 # TierListGen
 
-A private, phone-friendly tier-list maker. Gemini proposes contenders and generates coherent images; ranking progress and image data remain in IndexedDB on the device.
+A private, phone-friendly tier-list maker. Gemini proposes contenders and generates coherent images; ranking progress and image data are shared through the host and cached in IndexedDB on each device.
 
 ## Run locally
 
@@ -23,4 +23,6 @@ npm run test:e2e
 npm run build
 ```
 
-Lists autosave locally. Export creates a clean PNG of the ranking rows.
+Lists autosave to `.tierlistgen-data/lists.json` on the host and cache locally. When another device opens the app through the same Mac mini URL, its existing local lists merge into that shared library. Export creates a clean PNG of the ranking rows.
+
+The default file store is designed for the always-on Mac mini. Vercel's function filesystem is ephemeral, so a Vercel deployment needs a durable database/object store before shared history can be relied on there. Set `TIERLISTGEN_DATA_DIR` to relocate the host data directory; do not place it inside a synced or public Git directory.

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", async ({ page }) => {
+test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", async ({ page, browser }) => {
   await page.goto("/");
   await page.getByLabel("Access code").fill("demo");
   await page.getByRole("button", { name: /enter/i }).click();
@@ -21,6 +21,7 @@ test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", asyn
   await page.getByRole("button", { name: "GENERATE", exact: true }).click();
   await expect(page.getByLabel("Move Potato tornado")).toBeVisible();
   await expect(page.locator(".card").filter({ hasText: "Potato tornado" }).locator("img")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Add one item", exact: true })).toBeEnabled();
   await expect(page.locator(".tray .card")).toHaveCount(37);
 
   const trayCards = page.locator(".tray .card").filter({ has: page.locator("select") });
@@ -42,6 +43,7 @@ test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", asyn
   await page.mouse.up();
   await expect(tierCards.first().locator("b")).toHaveText(secondName!);
   await expect(tierCards.nth(1).locator("b")).toHaveText(firstName!);
+  await page.waitForTimeout(300);
 
   await expect(page.locator(".export-title h2")).toHaveText("potato dishes");
   const downloadPromise = page.waitForEvent("download");
@@ -54,6 +56,14 @@ test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", asyn
   const reopenedTierCards = page.locator(".export-canvas:not(.png-export) .tier-S .card");
   await expect(reopenedTierCards).toHaveCount(2);
   await expect(reopenedTierCards.first().locator("b")).toHaveText(secondName!);
+
+  const phone = await browser.newContext({ baseURL: new URL(page.url()).origin, viewport: { width: 390, height: 844 }, hasTouch: true });
+  const phonePage = await phone.newPage();
+  await phonePage.goto("/");
+  await phonePage.getByLabel("Access code").fill("demo");
+  await phonePage.getByRole("button", { name: /enter/i }).click();
+  await expect(phonePage.locator(".recent article b")).toHaveText("potato dishes");
+  await phone.close();
 });
 
 test("cancels image generation and keeps the mobile ranking board usable", async ({ page }) => {
