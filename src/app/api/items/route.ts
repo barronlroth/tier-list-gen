@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     const candidates = demos[topic.toLocaleLowerCase()] ?? Array.from({ length: 35 }, (_, i) => `${topic} pick ${i + 1}`);
-    const mockCount = count ?? Math.min(10, 30 - existing.length);
+    const mockCount = Math.min(count ?? 10, requestedCount);
     return NextResponse.json({ items: uniqueAdditions(candidates, existing, mockCount), mock: true });
   }
 
