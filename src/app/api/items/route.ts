@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   const { topic, existing, count } = parsed.data;
   const requestedCount = existing.length ? (count ?? 5) : Math.min(count ?? 30, 30);
 
-  const key = process.env.GEMINI_API_KEY;
+  const key = process.env.TIERLISTGEN_FORCE_MOCK ? undefined : process.env.GEMINI_API_KEY;
   if (!key) {
     const curated = demos[topic.toLocaleLowerCase()] ?? [];
     const fallback = Array.from({ length: existing.length + 35 }, (_, i) => `${topic} pick ${i + 1}`);

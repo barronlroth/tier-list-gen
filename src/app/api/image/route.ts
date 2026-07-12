@@ -17,10 +17,11 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid item" }, { status: 400 });
 
-  const key = process.env.GEMINI_API_KEY;
+  const key = process.env.TIERLISTGEN_FORCE_MOCK ? undefined : process.env.GEMINI_API_KEY;
   if (!key) {
-    const label = encodeURIComponent(parsed.data.item);
-    return NextResponse.json({ url: `https://placehold.co/640x480/ede8da/171717?text=${label}`, mock: true });
+    const label = parsed.data.item.replace(/[<>&]/g, "");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="100%" height="100%" fill="#ede8da"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="32" fill="#171717">${label}</text></svg>`;
+    return NextResponse.json({ url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, mock: true });
   }
 
   const prompt = `Create one clean square ranking-card image of ${parsed.data.item}, for a ${parsed.data.topic} tier list. Coherent art direction: ${parsed.data.style}. No text.`;
