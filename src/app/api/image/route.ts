@@ -7,6 +7,8 @@ const schema = z.object({
   style: z.string().max(300),
 });
 
+const IMAGE_MODEL = "gemini-3.1-flash-lite-image";
+
 export async function POST(req: Request) {
   let body: unknown;
   try {
@@ -25,10 +27,16 @@ export async function POST(req: Request) {
   }
 
   const prompt = `Create one clean square ranking-card image of ${parsed.data.item}, for a ${parsed.data.topic} tier list. Coherent art direction: ${parsed.data.style}. No text.`;
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${key}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${key}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["IMAGE"] } }),
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ["IMAGE"],
+        thinkingConfig: { thinkingLevel: "minimal" },
+      },
+    }),
     signal: req.signal,
   });
   if (!response.ok) return NextResponse.json({ error: "Image failed" }, { status: 502 });
