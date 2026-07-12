@@ -1,4 +1,61 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { inflateSync } from "node:zlib";
+
+async function expectPngHasVisibleContent(path: string) {
+  const png = await readFile(path);
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let colorType = 0;
+  const imageData: Buffer[] = [];
+  while (offset < png.length) {
+    const length = png.readUInt32BE(offset);
+    const type = png.toString("ascii", offset + 4, offset + 8);
+    const data = png.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      expect(data[8]).toBe(8);
+      colorType = data[9];
+    }
+    if (type === "IDAT") imageData.push(data);
+    offset += length + 12;
+  }
+  const bytesPerPixel = colorType === 6 ? 4 : colorType === 2 ? 3 : 0;
+  expect(bytesPerPixel).toBeGreaterThan(0);
+  expect(width).toBeGreaterThan(500);
+  expect(height).toBeGreaterThan(500);
+  const packed = inflateSync(Buffer.concat(imageData));
+  const rowBytes = width * bytesPerPixel;
+  const pixels = Buffer.alloc(rowBytes * height);
+  const paeth = (a: number, b: number, c: number) => {
+    const p = a + b - c;
+    const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+    return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+  };
+  for (let y = 0; y < height; y++) {
+    const source = y * (rowBytes + 1);
+    const target = y * rowBytes;
+    const filter = packed[source];
+    for (let x = 0; x < rowBytes; x++) {
+      const value = packed[source + x + 1];
+      const left = x >= bytesPerPixel ? pixels[target + x - bytesPerPixel] : 0;
+      const up = y ? pixels[target + x - rowBytes] : 0;
+      const upperLeft = y && x >= bytesPerPixel ? pixels[target + x - rowBytes - bytesPerPixel] : 0;
+      const predictor = filter === 1 ? left : filter === 2 ? up : filter === 3 ? Math.floor((left + up) / 2) : filter === 4 ? paeth(left, up, upperLeft) : 0;
+      pixels[target + x] = (value + predictor) & 255;
+    }
+  }
+  const colors = new Set<string>();
+  const pixelStride = Math.max(1, Math.floor(width * height / 20_000));
+  for (let pixel = 0; pixel < width * height; pixel += pixelStride) {
+    const index = pixel * bytesPerPixel;
+    colors.add(`${pixels[index]},${pixels[index + 1]},${pixels[index + 2]}`);
+    if (colors.size > 20) break;
+  }
+  expect(colors.size).toBeGreaterThan(20);
+}
 
 test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", async ({ page, browser }) => {
   await page.goto("/");
@@ -28,7 +85,7 @@ test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", asyn
   const secondName = await trayCards.first().locator("b").textContent();
   await trayCards.first().locator("select").selectOption("S");
 
-  const tierCards = page.locator(".export-canvas:not(.png-export) .tier-S .card");
+  const tierCards = page.locator(".export-canvas .tier-S .card");
   await expect(tierCards).toHaveCount(2);
   await tierCards.nth(1).scrollIntoViewIfNeeded();
   const from = await tierCards.nth(1).getByRole("button", { name: /^Drag / }).boundingBox();
@@ -46,12 +103,15 @@ test("adds one-off, sorts tiers, exports a titled PNG, saves, and reopens", asyn
   await expect(page.locator(".export-title h2")).toHaveText("potato dishes");
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: /export png/i }).click();
-  await downloadPromise;
+  const download = await downloadPromise;
+  const downloadedPath = await download.path();
+  expect(downloadedPath).not.toBeNull();
+  await expectPngHasVisibleContent(downloadedPath!);
 
   await page.getByRole("button", { name: /lists/i }).click();
   await expect(page.locator(".recent article b")).toHaveText("potato dishes");
   await page.getByRole("button", { name: "OPEN", exact: true }).click();
-  const reopenedTierCards = page.locator(".export-canvas:not(.png-export) .tier-S .card");
+  const reopenedTierCards = page.locator(".export-canvas .tier-S .card");
   await expect(reopenedTierCards).toHaveCount(2);
   await expect(reopenedTierCards.first().locator("b")).toHaveText(secondName!);
 
