@@ -21,7 +21,7 @@ describe("item generation route", () => {
     expect(body.items.map((item: string) => item.toLowerCase())).not.toContain("french fries");
   });
 
-  it("never exceeds the thirty-item total cap", async () => {
+  it("can expand an existing list beyond thirty items", async () => {
     delete process.env.GEMINI_API_KEY;
     const existing = Array.from({ length: 29 }, (_, index) => `Existing ${index}`);
     const response = await POST(new Request("http://localhost/api/items", {
@@ -30,6 +30,6 @@ describe("item generation route", () => {
     }));
     const body = await response.json();
 
-    expect(body.items).toHaveLength(1);
+    expect(body.items).toHaveLength(5);
   });
 });
